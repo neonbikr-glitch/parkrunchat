@@ -12,17 +12,16 @@ import {
   query,
   where,
   onSnapshot,
-  getDocs,
-  addDoc,
   serverTimestamp,
   arrayUnion,
   ref,
   uploadBytes,
   getDownloadURL,
   limit,
-  orderBy,
 } from "./firebase-config.js";
 import { BrowserMultiFormatReader } from "https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/+esm";
+
+const SESSION_TTL_MS = 1000 * 60 * 20;
 
 const state = {
   activeView: "chats",
@@ -33,6 +32,7 @@ const state = {
   cachedChats: [],
   cachedClubs: [],
   cachedLocations: [],
+  activeThread: null,
 };
 
 const els = {
@@ -66,7 +66,29 @@ const setStatus = (node, text, isError = false) => {
   node.style.color = isError ? "#ea5a5a" : "";
 };
 
-const sanitizeId = (value) => value.trim().replace(/[^\w-]/g, "");
+const sanitizeId = (value = "") => value.trim().replace(/[^\w-]/g, "");
+
+const saveBarcodeSession = (barcodeID) => {
+  localStorage.setItem("parkrunSession", JSON.stringify({ barcodeID, expiresAt: Date.now() + SESSION_TTL_MS }));
+};
+
+const clearBarcodeSession = () => localStorage.removeItem("parkrunSession");
+
+const getLiveSession = () => {
+  const raw = localStorage.getItem("parkrunSession");
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed.barcodeID || Date.now() > parsed.expiresAt) {
+      clearBarcodeSession();
+      return null;
+    }
+    return parsed;
+  } catch {
+    clearBarcodeSession();
+    return null;
+  }
+};
 
 async function verifyAndLoginWithBarcode(barcodeRaw) {
   const barcodeID = sanitizeId(barcodeRaw);
@@ -87,11 +109,34 @@ async function verifyAndLoginWithBarcode(barcodeRaw) {
     });
   } else {
     const data = snap.data();
-    if (data.barcodeID !== barcodeID) throw new Error("Barcode verification failed.");
+    if (sanitizeId(data.barcodeID) !== barcodeID) throw new Error("Barcode verification failed.");
   }
 
   const currentSnap = await getDoc(userRef);
   state.user = { id: barcodeID, ...currentSnap.data() };
+  saveBarcodeSession(barcodeID);
+  onLoginSuccess();
+}
+
+async function restoreExistingSession() {
+  const session = getLiveSession();
+  if (!session) return;
+
+  await signInAnonymously(auth);
+  const userRef = doc(db, "users", session.barcodeID);
+  const snap = await getDoc(userRef);
+  if (!snap.exists()) {
+    clearBarcodeSession();
+    return;
+  }
+
+  const data = snap.data();
+  if (sanitizeId(data.barcodeID) !== session.barcodeID) {
+    clearBarcodeSession();
+    return;
+  }
+
+  state.user = { id: session.barcodeID, ...data };
   onLoginSuccess();
 }
 
@@ -155,30 +200,39 @@ function connectRealtimeFeeds() {
   stopListeners();
   const uid = state.user.id;
 
-  const chatsQ = query(collection(db, "chats"), where("members", "array-contains", uid), limit(25));
+  const chatsQ = query(collection(db, "chats"), where("members", "array-contains", uid), limit(50));
   state.unsubscribers.push(onSnapshot(chatsQ, (snap) => {
     state.cachedChats = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     els.badgeChats.textContent = String(state.cachedChats.length);
+    refreshThreadIfNeeded("chats");
     if (state.activeView === "chats") renderChatsView();
   }));
 
-  const clubsQ = query(collection(db, "clubs"), where("members", "array-contains", uid), limit(25));
+  const clubsQ = query(collection(db, "clubs"), where("members", "array-contains", uid), limit(50));
   state.unsubscribers.push(onSnapshot(clubsQ, (snap) => {
     state.cachedClubs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     els.badgeClubs.textContent = String(state.cachedClubs.length);
+    refreshThreadIfNeeded("clubs");
     if (state.activeView === "clubs") renderClubsView();
   }));
 
-  const locationsQ = query(collection(db, "locations"), where("members", "array-contains", uid), limit(25));
+  const locationsQ = query(collection(db, "locations"), where("members", "array-contains", uid), limit(50));
   state.unsubscribers.push(onSnapshot(locationsQ, (snap) => {
     state.cachedLocations = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     els.badgeLocations.textContent = String(state.cachedLocations.length);
+    refreshThreadIfNeeded("locations");
     if (state.activeView === "locations") renderLocationsView();
   }));
 }
 
+function refreshThreadIfNeeded(scope) {
+  if (!state.activeThread || state.activeThread.scope !== scope) return;
+  renderThreadWindow(state.activeThread.scope, state.activeThread.id, state.activeThread.channel);
+}
+
 function renderCurrentView() {
   if (!state.user) return;
+  state.activeThread = null;
   els.navButtons.forEach((btn) => btn.classList.toggle("active", btn.dataset.view === state.activeView));
   if (state.activeView === "chats") return renderChatsView();
   if (state.activeView === "clubs") return renderClubsView();
@@ -187,7 +241,7 @@ function renderCurrentView() {
 }
 
 function renderChatsView() {
-  els.viewTitle.textContent = "Chats";
+  els.viewTitle.textContent = "Chats (Main)";
   els.contentArea.innerHTML = `
     <input id="chatSearch" class="inline-search" placeholder="Search by display name or parkrunID" />
     <div id="chatList" class="list"></div>
@@ -273,49 +327,54 @@ function renderProfileView() {
 
 function renderMessage(message) {
   const sentAt = message.timestamp?.toDate ? message.timestamp.toDate().toLocaleString() : "pending";
-  const reactions = Object.entries(message.reactions || {})
-    .map(([emoji, users]) => `${emoji} ${users.length}`)
-    .join(" ");
-
   return `
-    <article class="message" data-id="${message.id}">
+    <article class="message">
       <div><strong>${message.senderID}</strong></div>
       <div>${message.content || ""}</div>
       ${message.imageURL ? `<img src="${message.imageURL}" alt="uploaded image" />` : ""}
-      ${reactions ? `<div>${reactions}</div>` : ""}
       <div class="meta">${sentAt} • ${message.type || "text"}</div>
-      <button class="ghost react-btn" data-message="${message.id}">+😀</button>
     </article>
   `;
 }
 
-function buildThreadRef(scope, id, channel = "general") {
-  if (scope === "chats") return collection(db, "chats", id, "messages");
-  if (scope === "clubs") return collection(db, "clubs", id, "chat", "messages");
-  return collection(db, "locations", id, "channels", channel, "messages");
+function getContextDoc(scope, id) {
+  if (scope === "chats") return state.cachedChats.find((x) => x.id === id);
+  if (scope === "clubs") return state.cachedClubs.find((x) => x.id === id);
+  return state.cachedLocations.find((x) => x.id === id);
 }
 
 function canWriteTo(scope, contextDoc, channel) {
   if (scope === "locations" && channel === "results") return false;
-  if (scope === "chats") return (contextDoc.members || []).includes(state.user.id);
-  if (scope === "clubs") return (contextDoc.members || []).includes(state.user.id);
   return (contextDoc.members || []).includes(state.user.id);
 }
 
-async function openMessageFeed(scope, id, channel = "general") {
-  const contextDoc =
-    scope === "chats"
-      ? state.cachedChats.find((x) => x.id === id)
-      : scope === "clubs"
-      ? state.cachedClubs.find((x) => x.id === id)
-      : state.cachedLocations.find((x) => x.id === id);
+function getThreadMessages(scope, contextDoc, channel) {
+  if (scope === "chats") return contextDoc.messages || [];
+  if (scope === "clubs") return contextDoc.chat?.messages || [];
+  if (channel === "results") return contextDoc.channels?.results?.achievements || [];
+  return contextDoc.channels?.[channel]?.messages || [];
+}
 
+function renderThreadWindow(scope, id, channel = "general") {
+  const contextDoc = getContextDoc(scope, id);
   if (!contextDoc || !(contextDoc.members || []).includes(state.user.id)) {
-    return alert("Access denied for this conversation.");
+    state.activeThread = null;
+    return;
   }
 
   const writable = canWriteTo(scope, contextDoc, channel);
-  els.contentArea.innerHTML = `<div class="chat-window"><div id="messageList" class="messages"></div><div id="composerSlot"></div></div>`;
+  const list = getThreadMessages(scope, contextDoc, channel);
+  const renderedList = list
+    .map((message) =>
+      channel === "results"
+        ? `<article class="message"><div><strong>${message.title || "Achievement"}</strong></div><div>${message.detail || ""}</div><div class="meta">${message.timestamp?.toDate ? message.timestamp.toDate().toLocaleString() : "pending"}</div></article>`
+        : renderMessage(message)
+    )
+    .join("");
+
+  els.contentArea.innerHTML = `<div class="chat-window"><div id="messageList" class="messages">${renderedList || '<p class="hint">No updates yet.</p>'}</div><div id="composerSlot"></div></div>`;
+  const msgList = els.contentArea.querySelector("#messageList");
+  msgList.scrollTop = msgList.scrollHeight;
 
   const composerSlot = els.contentArea.querySelector("#composerSlot");
   if (!writable) {
@@ -333,29 +392,20 @@ async function openMessageFeed(scope, id, channel = "general") {
       form.reset();
     });
   }
+}
 
-  const messagesQ = query(buildThreadRef(scope, id, channel), orderBy("timestamp", "asc"), limit(100));
-  const unsub = onSnapshot(messagesQ, (snap) => {
-    const msgList = els.contentArea.querySelector("#messageList");
-    const messages = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    msgList.innerHTML = messages.map(renderMessage).join("");
-    msgList.scrollTop = msgList.scrollHeight;
+async function openMessageFeed(scope, id, channel = "general") {
+  const contextDoc = getContextDoc(scope, id);
+  if (!contextDoc || !(contextDoc.members || []).includes(state.user.id)) {
+    return alert("Access denied for this conversation.");
+  }
 
-    msgList.querySelectorAll(".react-btn").forEach((btn) => {
-      btn.addEventListener("click", () => addReaction(scope, id, channel, btn.dataset.message, "😀"));
-    });
-  });
-  state.unsubscribers.push(unsub);
+  state.activeThread = { scope, id, channel };
+  renderThreadWindow(scope, id, channel);
 }
 
 async function sendMessage(scope, id, channel, text, imageFile) {
-  const contextDoc =
-    scope === "chats"
-      ? state.cachedChats.find((x) => x.id === id)
-      : scope === "clubs"
-      ? state.cachedClubs.find((x) => x.id === id)
-      : state.cachedLocations.find((x) => x.id === id);
-
+  const contextDoc = getContextDoc(scope, id);
   if (!contextDoc || !canWriteTo(scope, contextDoc, channel)) throw new Error("Write blocked by permission rules.");
 
   let imageURL = "";
@@ -370,25 +420,37 @@ async function sendMessage(scope, id, channel, text, imageFile) {
     imageURL = await getDownloadURL(imageRef);
   }
 
-  await addDoc(buildThreadRef(scope, id, channel), {
+  const msg = {
     senderID: state.user.id,
     content: text,
-    timestamp: serverTimestamp(),
+    timestamp: new Date(),
     type: imageURL ? "image" : "text",
     imageURL,
-    reactions: {},
-  });
-}
+  };
 
-async function addReaction(scope, id, channel, messageID, emoji) {
-  const msgRef = doc(buildThreadRef(scope, id, channel), messageID);
-  await updateDoc(msgRef, { [`reactions.${emoji}`]: arrayUnion(state.user.id) });
+  if (scope === "chats") {
+    await updateDoc(doc(db, "chats", id), { messages: arrayUnion(msg) });
+    return;
+  }
+
+  if (scope === "clubs") {
+    const existing = contextDoc.chat?.messages || [];
+    await updateDoc(doc(db, "clubs", id), { chat: { messages: [...existing, msg] } });
+    return;
+  }
+
+  const existing = contextDoc.channels?.[channel]?.messages || [];
+  const channels = contextDoc.channels || {};
+  channels[channel] = { ...(channels[channel] || {}), messages: [...existing, msg] };
+  await updateDoc(doc(db, "locations", id), { channels });
 }
 
 async function logout() {
   stopBarcodeScanner();
   stopListeners();
   state.user = null;
+  state.activeThread = null;
+  clearBarcodeSession();
   await signOut(auth);
   els.appView.classList.remove("active");
   els.authView.classList.add("active");
@@ -398,7 +460,11 @@ els.startScanBtn.addEventListener("click", startBarcodeScanner);
 els.stopScanBtn.addEventListener("click", stopBarcodeScanner);
 els.recoveryForm.addEventListener("submit", sendRecovery);
 els.logoutBtn.addEventListener("click", logout);
-els.navButtons.forEach((btn) => btn.addEventListener("click", () => {
-  state.activeView = btn.dataset.view;
-  renderCurrentView();
-}));
+els.navButtons.forEach((btn) =>
+  btn.addEventListener("click", () => {
+    state.activeView = btn.dataset.view;
+    renderCurrentView();
+  })
+);
+
+restoreExistingSession();
