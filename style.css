@@ -1,0 +1,166 @@
+:root {
+  color-scheme: light dark;
+  --bg: #111827;
+  --card: #1f2937;
+  --muted: #9ca3af;
+  --accent: #22c55e;
+  --text: #f3f4f6;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Inter, system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+.app-header {
+  padding: 1rem;
+  background: #0f172a;
+  border-bottom: 1px solid #374151;
+}
+
+main {
+  padding: 1rem;
+  padding-bottom: 7rem;
+}
+
+.view,
+.pane {
+  display: none;
+}
+
+.view.active,
+.pane.active {
+  display: block;
+}
+
+.auth-grid {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+input,
+select,
+button {
+  width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid #4b5563;
+  background: #111827;
+  color: var(--text);
+  padding: 0.65rem;
+}
+
+button {
+  cursor: pointer;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.list li {
+  padding: 0.75rem;
+  background: var(--card);
+  border-radius: 0.6rem;
+}
+
+.toolbar {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.composer {
+  position: fixed;
+  bottom: 4rem;
+  left: 0;
+  right: 0;
+  padding: 0.75rem;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
+  background: rgba(15, 23, 42, 0.95);
+  border-top: 1px solid #374151;
+}
+
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  background: #0f172a;
+  border-top: 1px solid #374151;
+}
+
+.bottom-nav button {
+  border-radius: 0;
+  border: none;
+  padding: 0.75rem 0.35rem;
+}
+
+.bottom-nav button.active {
+  background: #14532d;
+}
+
+.badge {
+  display: inline-flex;
+  min-width: 1.2rem;
+  justify-content: center;
+  background: var(--accent);
+  color: #052e16;
+  border-radius: 999px;
+  padding: 0 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.note {
+  color: var(--muted);
+}
+
+.profile {
+  background: var(--card);
+  border-radius: 0.6rem;
+  padding: 1rem;
+}
+
+.profile dt {
+  color: var(--muted);
+}
+
+.profile dd {
+  margin: 0 0 0.75rem;
+}
+
+@media (min-width: 860px) {
+  main {
+    max-width: 880px;
+    margin: 0 auto;
+  }
+
+  .toolbar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: center;
+  }
+
+  .composer {
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(880px, 100%);
+    grid-template-columns: 1fr auto auto;
+  }
+}

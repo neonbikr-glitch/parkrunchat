@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>parkrun Chat</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <h1>parkrun Chat</h1>
+    <p id="sessionStatus">Not logged in</p>
+  </header>
+
+  <main>
+    <section id="authView" class="view active">
+      <h2>Barcode Login</h2>
+      <p>Scan your parkrun barcode to continue.</p>
+      <div class="auth-grid">
+        <label for="barcodeInput">Scanned parkrun ID</label>
+        <input id="barcodeInput" type="text" placeholder="e.g. A123456" autocomplete="off" />
+        <button id="simulateScanBtn">Simulate Scan</button>
+      </div>
+      <details>
+        <summary>Recovery (backup only)</summary>
+        <p>Recovery only sends a link to your verified ICE email and never transfers account ownership.</p>
+        <div class="auth-grid">
+          <label for="recoveryIdInput">parkrun ID</label>
+          <input id="recoveryIdInput" type="text" placeholder="Enter your parkrun ID" />
+          <button id="recoveryBtn">Send Recovery Email</button>
+        </div>
+      </details>
+      <p class="note">In production, replace simulation with QuaggaJS or ZXing scanner and enforce server-side verification.</p>
+    </section>
+
+    <section id="appView" class="view">
+      <div id="chatsPane" class="pane active">
+        <div class="toolbar">
+          <h2>Chats</h2>
+          <input id="chatSearch" type="search" placeholder="Search by name or parkrunID" />
+        </div>
+        <ul id="chatList" class="list"></ul>
+      </div>
+
+      <div id="clubsPane" class="pane">
+        <div class="toolbar">
+          <h2>Clubs</h2>
+          <button id="refreshClubsBtn">Refresh</button>
+        </div>
+        <ul id="clubList" class="list"></ul>
+      </div>
+
+      <div id="locationsPane" class="pane">
+        <div class="toolbar">
+          <h2>Locations</h2>
+          <select id="locationSelector"></select>
+          <select id="channelSelector">
+            <option value="general">#general</option>
+            <option value="events">#events</option>
+            <option value="volunteering">#volunteering</option>
+            <option value="results">#results</option>
+          </select>
+        </div>
+        <ul id="locationMessageList" class="list"></ul>
+      </div>
+
+      <div id="profilePane" class="pane">
+        <h2>Profile</h2>
+        <dl id="profileData" class="profile"></dl>
+      </div>
+
+      <section id="composer" class="composer">
+        <input id="messageInput" type="text" placeholder="Type a message" />
+        <input id="imageInput" type="file" accept="image/*" />
+        <button id="sendBtn">Send</button>
+      </section>
+    </section>
+  </main>
+
+  <nav class="bottom-nav">
+    <button data-pane="chatsPane" class="active">Chats <span id="chatBadge" class="badge">0</span></button>
+    <button data-pane="clubsPane">Clubs <span id="clubBadge" class="badge">0</span></button>
+    <button data-pane="locationsPane">Locations <span id="locationBadge" class="badge">0</span></button>
+    <button data-pane="profilePane">Profile</button>
+  </nav>
+
+  <script type="module" src="firebase-config.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
