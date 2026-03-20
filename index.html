@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Parkrun Chat</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section id="authView" class="panel active">
+        <h1>Parkrun Chat</h1>
+        <p class="subtitle">Barcode-only sign in for verified parkrunners.</p>
+        <div class="auth-grid">
+          <div>
+            <h2>Scan barcode</h2>
+            <video id="barcodePreview" playsinline></video>
+            <div class="auth-actions">
+              <button id="startScanBtn">Start scanner</button>
+              <button id="stopScanBtn" class="ghost">Stop scanner</button>
+            </div>
+            <p class="status" id="scanStatus">Scanner is idle.</p>
+          </div>
+          <div>
+            <h2>Recovery (backup only)</h2>
+            <form id="recoveryForm">
+              <label>
+                Parkrun ID
+                <input type="text" id="recoveryParkrunId" required />
+              </label>
+              <label>
+                Recovery email
+                <input type="email" id="recoveryEmail" required />
+              </label>
+              <button type="submit">Send recovery link</button>
+            </form>
+            <p class="hint">Recovery only works for pre-verified email on the same account.</p>
+            <p class="status" id="recoveryStatus"></p>
+          </div>
+        </div>
+      </section>
+
+      <section id="appView" class="panel">
+        <header class="topbar">
+          <div>
+            <h2 id="viewTitle">Chats</h2>
+            <p id="userSummary"></p>
+          </div>
+          <button id="logoutBtn" class="ghost">Logout</button>
+        </header>
+
+        <section id="contentArea" class="content-area"></section>
+
+        <nav class="bottom-nav">
+          <button data-view="chats" class="active">Chats <span id="badgeChats" class="badge">0</span></button>
+          <button data-view="clubs">Clubs <span id="badgeClubs" class="badge">0</span></button>
+          <button data-view="locations">Locations <span id="badgeLocations" class="badge">0</span></button>
+          <button data-view="profile">Profile</button>
+        </nav>
+      </section>
+    </main>
+
+    <template id="messageComposerTpl">
+      <form class="composer">
+        <input type="text" name="message" maxlength="500" placeholder="Type message..." required />
+        <label class="image-btn">
+          📷
+          <input type="file" name="image" accept="image/png,image/jpeg,image/webp" hidden />
+        </label>
+        <button type="submit">Send</button>
+      </form>
+    </template>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
